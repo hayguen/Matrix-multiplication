@@ -18,10 +18,10 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define Total_SIZE 1024 * 1024
+#define Total_SIZE 1032 * 1024
 #define BLOCK_SIZE 64
 
-void multiply(int n, const double *restrict A, const double *restrict B,
+void multiply(int n,int stride, const double *restrict A, const double *restrict B,
               double *restrict C) {
 
 #pragma omp parallel for collapse(2) // from 1.2 sec to 0.607 sec
@@ -44,7 +44,7 @@ void multiply(int n, const double *restrict A, const double *restrict B,
               1
           );*/
 
-              C[ii * n + jj] += A[ii * n + kk] * B[kk * n + jj];
+              C[ii * stride + jj] += A[ii * stride + kk] * B[kk * stride + jj];
             }
           }
         }
@@ -58,12 +58,12 @@ int main() {
   struct timespec start, end;
 
   int n = 1024;
-  size_t size = 1024 * 1024 * sizeof(double);
-  double *A = aligned_alloc(
-      BLOCK_SIZE, size); // get total size but in perfect chunck of block
-  double *B = aligned_alloc(BLOCK_SIZE, size);
-
-  double *C = aligned_alloc(BLOCK_SIZE, size);
+ int stride = 1032; // Our padding offset
+  size_t size = stride * n * sizeof(double);
+// 32-byte alignment is perfect for AVX 256-bit registers
+  double *A = (double *)aligned_alloc(64, size); 
+  double *B = (double *)aligned_alloc(64, size);
+  double *C = (double *)aligned_alloc(64, size);
 
   for (int i = 0; i < Total_SIZE; i++) {
     C[i] = 0; // auto initialize to 0
@@ -73,12 +73,12 @@ int main() {
     B[i] = 3.0;
   }
   printf("\n\tMatrix multiplication with "
-         "Tiling,alligned_alloc,built-in-pre-fetched and rest previous "
+         "Tiling,alligned_alloc,padding-8rows and rest previous "
          "optimisation \n");
 
   printf("\nStarting benchmark for %d x %d matrix...\n", n, n);
   clock_gettime(CLOCK_MONOTONIC, &start);
-  multiply(n, A, B, C);
+  multiply(n,stride, A, B, C);
   clock_gettime(CLOCK_MONOTONIC, &end);
 
   double time_taken =
